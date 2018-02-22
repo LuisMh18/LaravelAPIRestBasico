@@ -1,51 +1,55 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Users;
 
 use Illuminate\Http\Request;
-
-use AppHttpRequests;
-use AppHttpControllersController;
-use JWTAuth;
-use Tymon\JWTAuthExceptions\JWTException;
+use App\Http\Controllers\Controller;
+use App\Http\Controllers\ApiController;
+use Validator;
 use App\User;
+use JWTAuth;
 use Auth;
+use Tymon\JWTAuthExceptions\JWTException;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Mail\Message;
 
-class AuthenticateController extends Controller{
+class AuthenticateController extends ApiController
+{
 
-  public function __construct(){
+    public function __construct(){
       // Aplicar el middleware jwt.auth a todos los métodos de este controlador
       // excepto el método authenticate. No queremos evitar
       // el usuario de recuperar su token si no lo tiene ya
-      //$this->middleware('jwt.auth', ['except' => ['login']]);
+      $this->middleware('jwt.auth', ['only' => ['user_data']]);
 
-       //Route::group(['middleware' => 'authenticated'], function () {
    }
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
 
-  public function index(){
-
-    $data = [];
-    $data['user_sesion'] = Auth::user(); //usuario que inicio sesion
-
-    // Recuperar todos los usuarios de la base de datos y devolverlos
-    $data['users'] = User::all();
-    return response()->json([
-                     'error' => false,
-                     'data' => $data,
-                     'status' => 'success',
-                      200
-            ]);
-   }
+   public function register(Request $request)
+   {
+        //reglas de validacion
+        $rules = [
+          'name' => 'required',
+          'surname' => 'required',
+          'email' => 'required|email|unique:users',//el email debe de ser unico en la tabla usuarios
+          'password' => 'required|min:6|confirmed',//la coontrasea debe de ser confirmada con un campo llamado password_confirmation
+        ];
 
 
-   public function show(){
-     return response()->json([
-                      'error' => false,
-                      'data' => "Hola Mundo",
-                      'status' => 'success',
-                       200
-             ]);
-   }
+        $this->validate($request, $rules);
+
+        //el $request->all(); obtiene todos los datos del formulario con los campos correspondientes, en este caso del usuario
+        $campos = $request->all();
+        $campos['role'] = 0;
+        $campos['password'] = bcrypt($request->password);//encriptamos la contrasea
+        $usuario = User::create($campos);
+
+        return $this->showOne($usuario, "Usuario $usuario->name creado exitosamente!", 201);
+    }
 
     public function login(Request $request)
     {
@@ -94,5 +98,64 @@ class AuthenticateController extends Controller{
     }
 
 
+      public function user_data()
+    {
+        $data = Auth::user(); //usuario que inicio sesion
+
+        return $this->showOne($data); 
+    }
+
+
+    public function logout(Request $request) {
+        $this->validate($request, ['token' => 'required']);
+        try {
+            JWTAuth::invalidate($request->input('token'));
+            return response()->json([
+                           'error' => false,
+                           'message' => 'Tu sesión ha sido serrada correctamente.',
+                            200
+                  ]);
+        } catch (JWTException $e) {
+            // something went wrong whilst attempting to encode the token
+            return response()->json([
+                           'error' => true,
+                           'message' => 'Error al cerrar la sesión, intente de nuevo.',
+                            500
+                  ]);
+        }
+    }
+
+    //recuperar contraseña
+    public function recover(Request $request)
+    {
+        $user = User::where('email', $request->email)->first();
+        if (!$user) {
+            return response()->json([
+                           'error' => true,
+                           'message' => 'Tu dirección de correo electrónico no fue encontrada.',
+                            401
+                  ]);
+        }
+        try {
+            Password::sendResetLink($request->only('email'), function (Message $message) {
+                $message->subject('Su enlace de restablecimiento de contraseña');
+            });
+        } catch (\Exception $e) {
+            //Return with error
+            $error_message = $e->getMessage();
+            return response()->json([
+                           'error' => true,
+                           'message' => $error_message,
+                            401
+                  ]);
+        }
+        return response()->json([
+                           'error' => false,
+                           'message' => '¡Se ha enviado un correo electrónico de reinicio! Por favor revise su correo electrónico.',
+                            401
+                  ]);
+    }
 
 }
+
+
