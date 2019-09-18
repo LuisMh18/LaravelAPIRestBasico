@@ -13,7 +13,7 @@ use Tymon\JWTAuthExceptions\JWTException;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Mail\Message;
 
-class AuthenticateController extends ApiController
+class AuthenticateController extends Controller
 {
 
     public function __construct(){
@@ -52,15 +52,13 @@ class AuthenticateController extends ApiController
     }
 
     public function login(Request $request)
-    {
-
-        //validamos el email y la contraseña
-       $validate = Validator::make($request->all(), [
+    { 
+        $validate = Validator::make($request->all(), [
             'email' => 'required|email',
             'password' => 'required',
         ]);
-
-
+ 
+ 
         if ($validate->fails()) {
             return response()->json([
              'error' => 'validate',
@@ -68,10 +66,9 @@ class AuthenticateController extends ApiController
              'code' => 422
             ]);
         }
-
-
+ 
         $credentials = $request->only('email', 'password');
-
+ 
         try {
             // verifique las credenciales y cree un token para el usuario
               if (!$token = JWTAuth::attempt($credentials)) {
@@ -91,39 +88,58 @@ class AuthenticateController extends ApiController
                             500
                   ]);
         }
-        // si no se encuentran errores, podemos devolver un token
-        //return response()->json(['status' => 'success', 'data'=> [ 'token' => $token ]]);
-        //return $this->successResponse([ 'token' => $token ], 200);
-        return response()->json([ 'token' => $token ], 200);
-    }
-
-
-      public function user_data()
-    {
-        $data = Auth::user(); //usuario que inicio sesion
-
-        return $this->showOne($data); 
-    }
-
-
-    public function logout(Request $request) {
-        $this->validate($request, ['token' => 'required']);
-        try {
-            JWTAuth::invalidate($request->input('token'));
-            return response()->json([
-                           'error' => false,
-                           'message' => 'Tu sesión ha sido serrada correctamente.',
-                            200
-                  ]);
-        } catch (JWTException $e) {
-            // something went wrong whilst attempting to encode the token
-            return response()->json([
-                           'error' => true,
-                           'message' => 'Error al cerrar la sesión, intente de nuevo.',
-                            500
-                  ]);
+ 
+       
+ 
+        $user = DB::table('usuario');
+        if(Auth::user()->rol_id === 1){
+             $user->join('cliente', 'usuario.id', '=', 'cliente.usuario_id')
+             ->select('usuario.id', 'email', 'usuario', 'rol_id', 'nombre_cliente', 'paterno', 'materno');
+        } else {
+             $user->join('usuario_detalle', 'usuario.id', '=', 'usuario_detalle.usuario_id')
+             ->select('usuario.id', 'email', 'usuario', 'rol_id', 'nombre', 'paterno', 'materno', 'imagen');      
         }
+ 
+             $user = $user->where('usuario.id', Auth::user()->id)
+             ->first();
+ 
+ 
+        return response()->json([ 'token' => $token, 'data' => $user ], 200);
     }
+ 
+ 
+    public function logout(Request $request) {
+ 
+         $validate = Validator::make($request->all(), [
+            'token' => 'required',
+         ]);
+ 
+ 
+        if ($validate->fails()) {
+            return response()->json([
+             'error' => 'validate',
+             'errors' => $validate->errors(),
+             'code' => 422
+            ]);
+        }
+ 
+ 
+         try {
+             JWTAuth::invalidate($request->input('token'));
+             return response()->json([
+                            'error' => false,
+                            'message' => 'Tu sesión ha sido serrada correctamente.',
+                             200
+                   ]);
+         } catch (JWTException $e) {
+             // something went wrong whilst attempting to encode the token
+             return response()->json([
+                            'error' => true,
+                            'message' => 'Error al cerrar la sesión, intente de nuevo.',
+                             500
+                   ]);
+         }
+     }
 
     //recuperar contraseña
     public function recover(Request $request)
